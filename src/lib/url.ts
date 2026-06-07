@@ -1,4 +1,6 @@
 export function appUrl() {
-  return (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "")
+  const fromEnv = (process.env.APP_URL || "").trim()
+  if (fromEnv) return fromEnv.replace(/\/$/, "")
+  if (process.env.NODE_ENV === "production") return "https://menumio.it"
+  return "http://localhost:3000"
 }
-
