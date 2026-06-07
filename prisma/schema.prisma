@@ -1,0 +1,339 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  BUSINESS_OWNER
+}
+
+enum Plan {
+  FREE
+  PREMIUM
+  GOLD
+}
+
+enum BusinessType {
+  RISTORANTE
+  GELATERIA
+  BAR
+  PUB
+  PASTICCERIA
+  ALTRO
+}
+
+enum ThemeMode {
+  LIGHT
+  DARK
+}
+
+enum VisualStyle {
+  MINIMAL
+  ELEGANT
+  MODERN
+  STREET
+  LUXURY
+}
+
+enum FontStyle {
+  INTER
+  SYSTEM
+  GEIST
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum QrCodeType {
+  GENERAL
+  TABLE
+  CATEGORY
+  PROMO
+}
+
+enum ScreenLayout {
+  LANDSCAPE_16_9
+  PORTRAIT_9_16
+}
+
+enum ScreenStatus {
+  OFFLINE
+  ONLINE
+}
+
+enum AnalyticsEventType {
+  QR_SCAN
+  MENU_VIEW
+  PRODUCT_VIEW
+  CATEGORY_VIEW
+  OUTBOUND_CLICK
+  SCREEN_VIEW
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String?
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(BUSINESS_OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  businessesOwned Business[] @relation("BusinessOwner")
+}
+
+model Business {
+  id           String       @id @default(cuid())
+  ownerId      String
+  name         String
+  slug         String       @unique
+  type         BusinessType @default(ALTRO)
+  plan         Plan         @default(FREE)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  stripeSubscriptionStatus String?
+  stripeCurrentPeriodEnd   DateTime?
+  logoUrl      String?
+  coverUrl     String?
+  primaryColor String       @default("#111827")
+  themeMode    ThemeMode    @default(LIGHT)
+  visualStyle  VisualStyle  @default(MINIMAL)
+  fontStyle    FontStyle    @default(INTER)
+  menuUi       Json?
+  screenUi     Json?
+  whatsapp     String?
+  instagram    String?
+  address      String?
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  owner      User             @relation("BusinessOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  menus      Menu[]
+  categories Category[]
+  products   Product[]
+  qrCodes    QrCode[]
+  screens    Screen[]
+  playlists  Playlist[]
+  schedules  Schedule[]
+  events     AnalyticsEvent[]
+  promotions Promotion[]
+}
+
+model Menu {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  categories Category[]
+
+  @@index([businessId])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  businessId  String
+  menuId      String?
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  isVisible   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  menu     Menu?     @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  products Product[]
+
+  @@index([businessId])
+  @@index([menuId])
+}
+
+model Product {
+  id               String   @id @default(cuid())
+  businessId       String
+  categoryId       String
+  name             String
+  description      String?
+  shortDescription String?
+  translations     Json?
+  price            Decimal?
+  ingredients      String?
+  isAvailable      Boolean  @default(true)
+  isFeatured       Boolean  @default(false)
+  isNew            Boolean  @default(false)
+  isPromo          Boolean  @default(false)
+  upsellProductIds Json?
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  business      Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category      Category          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  media         ProductMedia[]
+  allergens     ProductAllergen[]
+  playlistItems PlaylistItem[]
+  events        AnalyticsEvent[]
+
+  @@index([businessId])
+  @@index([categoryId])
+}
+
+model Promotion {
+  id              String   @id @default(cuid())
+  businessId      String
+  code            String
+  title           String
+  description     String?
+  discountPercent Int?
+  active          Boolean  @default(true)
+  startsAt        DateTime?
+  endsAt          DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([active])
+  @@unique([businessId, code])
+}
+
+model ProductMedia {
+  id           String    @id @default(cuid())
+  productId    String
+  type         MediaType @default(IMAGE)
+  url          String
+  thumbnailUrl String?
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model Allergen {
+  id   String  @id @default(cuid())
+  name String  @unique
+  icon String?
+
+  products ProductAllergen[]
+}
+
+model ProductAllergen {
+  productId  String
+  allergenId String
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  allergen Allergen @relation(fields: [allergenId], references: [id], onDelete: Cascade)
+
+  @@id([productId, allergenId])
+}
+
+model QrCode {
+  id          String     @id @default(cuid())
+  businessId  String
+  type        QrCodeType @default(GENERAL)
+  targetUrl   String
+  tableNumber Int?
+  categoryId  String?
+  scans       Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
+
+model Screen {
+  id         String       @id @default(cuid())
+  businessId String
+  name       String
+  screenCode String       @unique
+  layout     ScreenLayout @default(LANDSCAPE_16_9)
+  status     ScreenStatus @default(OFFLINE)
+  lastSeenAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
+
+model Playlist {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  business  Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items     PlaylistItem[]
+  schedules Schedule[]
+
+  @@index([businessId])
+}
+
+model PlaylistItem {
+  id         String  @id @default(cuid())
+  playlistId String
+  productId  String?
+  mediaId    String?
+  title      String?
+  subtitle   String?
+  duration   Int     @default(10)
+  sortOrder  Int     @default(0)
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([playlistId])
+  @@index([productId])
+}
+
+model Schedule {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String
+  startTime  String
+  endTime    String
+  daysOfWeek String
+  playlistId String
+  isActive   Boolean @default(true)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
+
+model AnalyticsEvent {
+  id         String             @id @default(cuid())
+  businessId String
+  type       AnalyticsEventType
+  productId  String?
+  categoryId String?
+  qrCodeId   String?
+  metadata   Json?
+  createdAt  DateTime           @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([businessId])
+  @@index([type])
+  @@index([createdAt])
+}

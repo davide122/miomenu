@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-main: #FAFAF8;
+  --bg-soft: #F4F3EF;
+  --surface: #FFFFFF;
+  --surface-muted: #F7F7F4;
+  --surface-glass: rgba(255, 255, 255, 0.72);
+
+  --text-main: #111111;
+  --text-muted: #6E6E6E;
+  --text-soft: #9A9A9A;
+
+  --border-soft: rgba(17, 17, 17, 0.08);
+  --border-medium: rgba(17, 17, 17, 0.14);
+
+  --accent: #111111;
+  --brand: var(--accent);
+
+  --shadow-soft: 0 18px 50px rgba(17, 17, 17, 0.06);
+  --shadow-float: 0 10px 30px rgba(17, 17, 17, 0.08);
+
+  --motion-fast: 180ms;
+  --motion-base: 220ms;
+  --motion-slow: 320ms;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg-main);
+  color: var(--text-main);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(17, 17, 17, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
