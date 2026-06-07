@@ -27,6 +27,8 @@ type MenuUi = {
   heroSubtitleText?: string
   heroTitleColor?: string
   heroSubtitleColor?: string
+  dishOfDayProductId?: string
+  aiQuizEnabled?: boolean
   showFeaturedRail?: boolean
   showSocial?: boolean
 }
@@ -224,10 +226,12 @@ function screenCopy(mood: VisualStyle) {
 export function ExperienceBuilder({
   businessId,
   businessSlug,
+  products,
   initial
 }: {
   businessId: string
   businessSlug: string
+  products?: Array<{ id: string; name: string; price: string | null; isAvailable: boolean }>
   initial: {
     primaryColor: string
     themeMode: ThemeMode
@@ -269,6 +273,8 @@ export function ExperienceBuilder({
     heroSubtitleText: initial.menuUi?.heroSubtitleText,
     heroTitleColor: initial.menuUi?.heroTitleColor,
     heroSubtitleColor: initial.menuUi?.heroSubtitleColor,
+    dishOfDayProductId: initial.menuUi?.dishOfDayProductId,
+    aiQuizEnabled: initial.menuUi?.aiQuizEnabled,
     showFeaturedRail: initial.menuUi?.showFeaturedRail,
     showSocial: initial.menuUi?.showSocial
   })
@@ -495,7 +501,8 @@ export function ExperienceBuilder({
           </div>
 
           {tab === "MENU" ? (
-            <div className="grid gap-4 rounded-3xl border border-border bg-surface-muted p-4">
+            <div className="grid gap-4">
+              <div className="grid gap-4 rounded-3xl border border-border bg-surface-muted p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">Hero</p>
                 <div className="flex items-center gap-2">
@@ -723,6 +730,76 @@ export function ExperienceBuilder({
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div className="grid gap-4 rounded-3xl border border-border bg-surface-muted p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">Piatto del giorno</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMenuUi((v) => ({
+                      ...v,
+                      dishOfDayProductId: undefined
+                    }))
+                  }
+                  className="h-10 rounded-full border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                >
+                  Reset
+                </button>
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-sm font-medium text-foreground">
+                  Prodotto in primo piano
+                </label>
+                <select
+                  value={menuUi.dishOfDayProductId ?? ""}
+                  onChange={(e) => {
+                    const next = e.currentTarget.value.trim()
+                    setMenuUi((v) => ({
+                      ...v,
+                      dishOfDayProductId: next || undefined
+                    }))
+                  }}
+                  className={selectClass()}
+                  disabled={!products?.length}
+                >
+                  <option value="">Nessuno</option>
+                  {(products ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.price ? ` • € ${p.price}` : ""}
+                      {p.isAvailable ? "" : " (non disponibile)"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted">
+                  Verrà mostrato grande in alto nel menu pubblico.
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-sm font-medium text-foreground">Quiz AI</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMenuUi((v) => ({
+                        ...v,
+                        aiQuizEnabled: !(v.aiQuizEnabled ?? true)
+                      }))
+                    }
+                    className={pill(menuUi.aiQuizEnabled ?? true)}
+                  >
+                    Abilitato
+                  </button>
+                </div>
+                <p className="text-xs text-muted">
+                  Mostra “Non sai cosa scegliere? Chiedi all’AI” nel menu pubblico.
+                </p>
+              </div>
+            </div>
             </div>
           ) : (
             <div className="grid gap-4 rounded-3xl border border-border bg-surface-muted p-4">

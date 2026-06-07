@@ -49,6 +49,12 @@ type PublicProductWithCategory = PublicProduct & {
   categoryName: string
 }
 
+type QuizQuestion = {
+  id: string
+  text: string
+  options: Array<{ id: string; label: string }>
+}
+
 function normalize(text: string) {
   return text
     .toLowerCase()
@@ -75,6 +81,8 @@ export function PublicMenuClient({
   business: {
     name: string
     slug: string
+    type?: string
+    plan?: "FREE" | "PREMIUM" | "GOLD"
     logoUrl: string | null
     coverUrl: string | null
     primaryColor: string
@@ -90,6 +98,8 @@ export function PublicMenuClient({
       heroSubtitleText?: string
       heroTitleColor?: string
       heroSubtitleColor?: string
+      dishOfDayProductId?: string
+      aiQuizEnabled?: boolean
       showFeaturedRail?: boolean
       showSocial?: boolean
     } | null
@@ -118,9 +128,18 @@ export function PublicMenuClient({
   const [reduceMotion, setReduceMotion] = useState(false)
   const [shareStatus, setShareStatus] = useState<"IDLE" | "COPIED">("IDLE")
   const [lang, setLang] = useState<"it" | "en">("it")
+  const [featuredListOpen, setFeaturedListOpen] = useState(false)
+  const [quizOpen, setQuizOpen] = useState(false)
+  const [quizStatus, setQuizStatus] = useState<"IDLE" | "LOADING" | "READY" | "SUBMITTING" | "DONE" | "ERROR">("IDLE")
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({})
+  const [quizRecommendedIds, setQuizRecommendedIds] = useState<string[]>([])
+  const [quizReason, setQuizReason] = useState("")
+  const [quizError, setQuizError] = useState("")
   const [sheetMediaIndex, setSheetMediaIndex] = useState(0)
 
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
+  const quizCloseBtnRef = useRef<HTMLButtonElement | null>(null)
   const lastFocusedRef = useRef<HTMLElement | null>(null)
   const prevHashRef = useRef<string>("")
   const closeTimerRef = useRef<number | null>(null)
@@ -488,6 +507,96 @@ export function PublicMenuClient({
     }
   }
 
+  const quizRecommendedProducts = useMemo(() => {
+    const list = quizRecommendedIds
+      .map((id) => allProducts.find((p) => p.id === id) ?? null)
+      .filter((p): p is PublicProductWithCategory => p !== null)
+      .map((p) => getTranslatedProduct(p))
+    return list.slice(0, 6)
+  }, [allProducts, quizRecommendedIds, lang])
+
+  const allQuizAnswered =
+    quizQuestions.length > 0 && quizQuestions.every((q) => Boolean(quizAnswers[q.id]))
+
+  async function loadQuiz() {
+    setQuizError("")
+    setQuizStatus("LOADING")
+    setQuizQuestions([])
+    setQuizAnswers({})
+    setQuizRecommendedIds([])
+    setQuizReason("")
+
+    try {
+      const res = await fetch("/api/ai/quiz", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          businessSlug: business.slug,
+          mode: "init",
+          lang
+        })
+      })
+      const data = (await res.json()) as
+        | { ok: true; questions: QuizQuestion[] }
+        | { ok: false; error: string }
+
+      if (!res.ok || !data.ok) {
+        setQuizStatus("ERROR")
+        setQuizError(data.ok ? "AI non disponibile." : data.error)
+        return
+      }
+
+      setQuizQuestions(data.questions)
+      setQuizStatus("READY")
+    } catch {
+      setQuizStatus("ERROR")
+      setQuizError("AI non disponibile in questo momento.")
+    }
+  }
+
+  async function submitQuiz() {
+    if (!allQuizAnswered) return
+    setQuizError("")
+    setQuizStatus("SUBMITTING")
+
+    try {
+      const res = await fetch("/api/ai/quiz", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          businessSlug: business.slug,
+          mode: "recommend",
+          lang,
+          answers: quizAnswers
+        })
+      })
+      const data = (await res.json()) as
+        | { ok: true; recommendedProductIds: string[]; reason?: string }
+        | { ok: false; error: string }
+
+      if (!res.ok || !data.ok) {
+        setQuizStatus("ERROR")
+        setQuizError(data.ok ? "AI non disponibile." : data.error)
+        return
+      }
+
+      setQuizRecommendedIds(data.recommendedProductIds)
+      setQuizReason(data.reason ?? "")
+      setQuizStatus("DONE")
+    } catch {
+      setQuizStatus("ERROR")
+      setQuizError("AI non disponibile in questo momento.")
+    }
+  }
+
+  async function startQuiz() {
+    if (selectedProductId) closeSheet()
+    setQuizOpen(true)
+    if (quizStatus === "IDLE" || quizStatus === "ERROR") {
+      await loadQuiz()
+    }
+  }
+
   const pairingsFor = useMemo(() => {
     const pool = allProducts.filter((p) => (onlyAvailable ? p.isAvailable : true))
 
@@ -552,18 +661,20 @@ export function PublicMenuClient({
   }, [selectedProductId])
 
   useEffect(() => {
-    if (!selectedProductId) return
+    if (!selectedProductId && !quizOpen) return
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeSheet()
+      if (e.key !== "Escape") return
+      if (selectedProductId) closeSheet()
+      else setQuizOpen(false)
     }
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [closeSheet, selectedProductId])
+  }, [closeSheet, quizOpen, selectedProductId])
 
   useEffect(() => {
-    if (!selectedProductId) return
+    if (!selectedProductId && !quizOpen) return
 
     const body = document.body
     if (!bodyLockRef.current) {
@@ -582,16 +693,17 @@ export function PublicMenuClient({
     }
 
     const raf = window.requestAnimationFrame(() => {
-      closeBtnRef.current?.focus()
+      if (selectedProductId) closeBtnRef.current?.focus()
+      else quizCloseBtnRef.current?.focus()
     })
 
     return () => {
       window.cancelAnimationFrame(raf)
     }
-  }, [selectedProductId])
+  }, [quizOpen, selectedProductId])
 
   useEffect(() => {
-    if (selectedProductId) return
+    if (selectedProductId || quizOpen) return
     if (!bodyLockRef.current) return
 
     const { scrollY, overflow, position, top, width } = bodyLockRef.current
@@ -605,7 +717,7 @@ export function PublicMenuClient({
 
     window.scrollTo(0, scrollY)
     lastFocusedRef.current?.focus?.()
-  }, [selectedProductId])
+  }, [quizOpen, selectedProductId])
 
   useEffect(() => {
     const fromHash = () => {
@@ -635,11 +747,29 @@ export function PublicMenuClient({
   const heroSubtitleText = menuUi?.heroSubtitleText ?? "Scorri e scegli velocemente."
   const heroTitleColor = menuUi?.heroTitleColor
   const heroSubtitleColor = menuUi?.heroSubtitleColor
+  const dishOfDayProductId = (menuUi?.dishOfDayProductId ?? "").trim()
+  const dishOfDay = dishOfDayProductId
+    ? allProducts.find((p) => p.id === dishOfDayProductId) ?? null
+    : null
+  const dishOfDayView = dishOfDay ? getTranslatedProduct(dishOfDay) : null
+  const allowAiQuiz = menuUi?.aiQuizEnabled ?? true
 
   const showFeaturedRail =
     allowFeaturedRail &&
     quickFilter === "ALL" &&
     featuredRail.length > 0 &&
+    !query.trim() &&
+    !allergen
+
+  const showDishOfDay =
+    Boolean(dishOfDayView) &&
+    quickFilter === "ALL" &&
+    !query.trim() &&
+    !allergen
+
+  const showQuizCta =
+    allowAiQuiz &&
+    quickFilter === "ALL" &&
     !query.trim() &&
     !allergen
 
@@ -1079,6 +1209,86 @@ export function PublicMenuClient({
         </header>
 
         <main className="px-5 pb-24 pt-6">
+          {showDishOfDay && dishOfDayView ? (
+            <section className="mb-8">
+              <button
+                type="button"
+                onClick={() => openProduct(dishOfDayView.id)}
+                className="w-full overflow-hidden rounded-[32px] border border-border bg-white text-left shadow-soft transition-colors duration-200 hover:bg-surface-muted"
+              >
+                <div className="relative h-44 w-full bg-background">
+                  {dishOfDayView.imageUrl ? (
+                    <Image
+                      src={dishOfDayView.imageUrl}
+                      alt={dishOfDayView.name}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, 768px"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="h-full w-full bg-[color:var(--brand)]/10" />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
+                  <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-foreground backdrop-blur">
+                    Piatto del giorno
+                  </div>
+                </div>
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-lg font-semibold tracking-tight text-foreground">
+                        {dishOfDayView.name}
+                      </p>
+                      {dishOfDayView.shortDescription ? (
+                        <p className="mt-1 text-sm text-muted">
+                          {dishOfDayView.shortDescription}
+                        </p>
+                      ) : null}
+                    </div>
+                    {dishOfDayView.price ? (
+                      <div className="flex-none rounded-full bg-surface-muted px-3 py-1 text-sm font-semibold text-foreground">
+                        € {dishOfDayView.price}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 inline-flex h-11 items-center rounded-full border border-transparent bg-[color:var(--accent)] px-5 text-sm font-semibold text-white">
+                    Vedi dettagli
+                  </div>
+                </div>
+              </button>
+            </section>
+          ) : null}
+
+          {showQuizCta ? (
+            <section className="mb-8">
+              <div className="rounded-3xl border border-border bg-surface p-5 shadow-soft">
+                <p className="text-sm font-semibold text-foreground">
+                  Non sai cosa scegliere?
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  Rispondi a 3 domande e ti consigliamo cosa prendere.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void startQuiz()}
+                    className="h-11 rounded-full border border-transparent bg-[color:var(--accent)] px-5 text-sm font-semibold text-white transition-colors duration-200 hover:opacity-90"
+                  >
+                    Chiedi all’AI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void loadQuiz()}
+                    className="h-11 rounded-full border border-border bg-white px-5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                  >
+                    Aggiorna quiz
+                  </button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           {showFeaturedRail ? (
             <section className="mb-8">
               <div className="flex items-end justify-between gap-3">
@@ -1099,7 +1309,22 @@ export function PublicMenuClient({
                 ))}
               </CarouselRow>
 
-              <ProductList products={featuredRail.map((p) => getTranslatedProduct(p))} showCategory />
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFeaturedListOpen((v) => !v)}
+                  className="h-11 rounded-full border border-border bg-white px-5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                >
+                  {featuredListOpen ? "Nascondi lista" : "Vedi lista completa"}
+                </button>
+              </div>
+
+              {featuredListOpen ? (
+                <ProductList
+                  products={featuredRail.map((p) => getTranslatedProduct(p))}
+                  showCategory
+                />
+              ) : null}
             </section>
           ) : null}
 
@@ -1131,152 +1356,40 @@ export function PublicMenuClient({
                           }
                           className="h-10 rounded-full border border-border bg-white px-4 text-sm font-medium transition-colors duration-200 hover:bg-surface-muted"
                         >
-                          {expandedCategories[c.id] ? "Compatta" : "Mostra tutti"}
+                          {expandedCategories[c.id] ? "Nascondi lista" : "Vedi lista"}
                         </button>
                       ) : null}
                     </div>
                   </div>
 
+                  <CarouselRow>
+                    {c.products.map((p) => {
+                      const enriched = {
+                        ...p,
+                        categoryId: c.id,
+                        categoryName: c.name
+                      }
+                      return (
+                        <ProductCarouselCard
+                          key={p.id}
+                          p={getTranslatedProduct(enriched)}
+                          size="category"
+                        />
+                      )
+                    })}
+                  </CarouselRow>
+
                   {expandedCategories[c.id] ? (
-                    <div className="mt-4 grid gap-3">
-                      {c.products.map((p) => {
-                        const tp = getTranslatedProduct(p)
-                        const pairings =
-                          p.isFeatured || p.isPromo ? pairingsFor(p.id, c.id) : []
-                        const pairingsView = pairings.map((x) => getTranslatedProduct(x))
-
-                        return (
-                          <button
-                            id={`prod_${p.id}`}
-                            key={p.id}
-                            type="button"
-                            aria-label={`Apri dettaglio: ${tp.name}`}
-                            onClick={() => openProduct(p.id)}
-                            className={cn(
-                              "w-full rounded-3xl border border-border bg-white p-4 text-left shadow-soft",
-                              !p.isAvailable ? "opacity-60" : undefined
-                            )}
-                          >
-                            <div className="flex items-start gap-4">
-                              <div className="relative h-24 w-24 flex-none overflow-hidden rounded-3xl border border-border bg-background">
-                                {p.imageUrl ? (
-                                  <Image
-                                    src={p.imageUrl}
-                                    alt={tp.name}
-                                    fill
-                                    className="object-cover"
-                                    sizes="96px"
-                                    loading="lazy"
-                                  />
-                                ) : p.videoUrl ? (
-                                  <video
-                                    className="h-full w-full object-cover"
-                                    src={p.videoUrl}
-                                    muted
-                                    loop
-                                    playsInline
-                                    autoPlay
-                                  />
-                                ) : (
-                                  <div className="h-full w-full bg-[color:var(--brand)]/10" />
-                                )}
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <p className="truncate text-base font-semibold tracking-tight">
-                                      {tp.name}
-                                    </p>
-                                    {tp.shortDescription ? (
-                                      <p className="mt-1 text-sm text-muted">
-                                        {tp.shortDescription}
-                                      </p>
-                                    ) : null}
-                                  </div>
-                                  {p.price ? (
-                                    <div className="flex-none rounded-full bg-surface-muted px-3 py-1 text-base font-semibold">
-                                      € {p.price}
-                                    </div>
-                                  ) : (
-                                    <div className="flex-none rounded-full bg-surface-muted px-3 py-1 text-sm font-medium text-muted">
-                                      —
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                  {!p.isAvailable ? (
-                                    <Badge variant="danger">Non disponibile</Badge>
-                                  ) : null}
-                                  {p.isFeatured ? (
-                                    <Badge variant="brand">{uiText.recommended}</Badge>
-                                  ) : null}
-                                  {p.isNew ? (
-                                    <Badge variant="muted">Novità</Badge>
-                                  ) : null}
-                                  {p.isPromo ? <Badge>Promo</Badge> : null}
-                                </div>
-
-                                {showAllergens && p.allergens.length ? (
-                                  <div className="mt-3 flex flex-wrap gap-2">
-                                    {p.allergens.slice(0, 4).map((a) => (
-                                      <Badge key={a} variant="muted">
-                                        {a}
-                                      </Badge>
-                                    ))}
-                                    {p.allergens.length > 4 ? (
-                                      <Badge variant="muted">
-                                        +{p.allergens.length - 4}
-                                      </Badge>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-
-                                {pairingsView.length ? (
-                                  <div className="mt-3 text-sm text-muted">
-                                    Abbina con{" "}
-                                    <span className="font-medium text-foreground">
-                                      {pairingsView.map((x) => x.name).join(" • ")}
-                                    </span>
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <>
-                      <CarouselRow>
-                        {c.products.map((p) => {
-                          const enriched = {
-                            ...p,
-                            categoryId: c.id,
-                            categoryName: c.name
-                          }
-                          return (
-                            <ProductCarouselCard
-                              key={p.id}
-                              p={getTranslatedProduct(enriched)}
-                              size="category"
-                            />
-                          )
-                        })}
-                      </CarouselRow>
-
-                      <ProductList
-                        products={c.products.map((p) =>
-                          getTranslatedProduct({
-                            ...p,
-                            categoryId: c.id,
-                            categoryName: c.name
-                          })
-                        )}
-                      />
-                    </>
-                  )}
+                    <ProductList
+                      products={c.products.map((p) =>
+                        getTranslatedProduct({
+                          ...p,
+                          categoryId: c.id,
+                          categoryName: c.name
+                        })
+                      )}
+                    />
+                  ) : null}
                 </section>
               ))}
             </div>
@@ -1295,6 +1408,159 @@ export function PublicMenuClient({
             </Link>
           </div>
         </footer>
+
+        {quizOpen ? (
+          <div className="fixed inset-0 z-50">
+            <button
+              type="button"
+              aria-label="Chiudi quiz"
+              onClick={() => setQuizOpen(false)}
+              className={cn(
+                "absolute inset-0 cursor-default bg-black/45 backdrop-blur-[2px] transition-opacity",
+                reduceMotion ? "duration-0" : "duration-200"
+              )}
+            />
+
+            <div
+              className={cn(
+                "absolute inset-x-0 bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2",
+                "transition-transform ease-out",
+                reduceMotion ? "duration-0" : "duration-200"
+              )}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                className={cn(
+                  "relative overflow-hidden rounded-t-[34px] border border-border bg-white",
+                  "shadow-[0_-30px_80px_rgba(0,0,0,0.35)]",
+                  "max-h-[88vh]"
+                )}
+              >
+                <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">Chiedi all’AI</p>
+                    <p className="mt-1 text-sm text-muted">
+                      Rispondi e ti consigliamo cosa prendere.
+                    </p>
+                  </div>
+                  <button
+                    ref={quizCloseBtnRef}
+                    type="button"
+                    onClick={() => setQuizOpen(false)}
+                    className="h-10 flex-none rounded-full border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                  >
+                    {uiText.close}
+                  </button>
+                </div>
+
+                <div className="max-h-[72vh] overflow-y-auto border-t border-border px-5 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-4">
+                  {quizStatus === "LOADING" ? (
+                    <div className="rounded-3xl border border-border bg-surface p-5 text-sm text-muted">
+                      Sto preparando il quiz…
+                    </div>
+                  ) : null}
+
+                  {quizStatus === "ERROR" ? (
+                    <div className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                      {quizError || "AI non disponibile."}
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          onClick={() => void loadQuiz()}
+                          className="h-11 rounded-full border border-transparent bg-[color:var(--accent)] px-5 text-sm font-semibold text-white transition-colors duration-200 hover:opacity-90"
+                        >
+                          Riprova
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {quizStatus === "READY" || quizStatus === "SUBMITTING" ? (
+                    <div className="grid gap-4">
+                      {quizQuestions.map((q) => (
+                        <div key={q.id} className="rounded-3xl border border-border bg-surface p-5">
+                          <p className="text-sm font-semibold text-foreground">{q.text}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {q.options.map((o) => {
+                              const active = quizAnswers[q.id] === o.id
+                              return (
+                                <button
+                                  key={o.id}
+                                  type="button"
+                                  onClick={() =>
+                                    setQuizAnswers((v) => ({
+                                      ...v,
+                                      [q.id]: o.id
+                                    }))
+                                  }
+                                  className={cn(
+                                    "h-10 rounded-full border px-4 text-sm font-medium transition-colors duration-200",
+                                    active
+                                      ? "border-transparent bg-[color:var(--brand)] text-white"
+                                      : "border-border bg-white text-foreground hover:bg-surface-muted"
+                                  )}
+                                >
+                                  {o.label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        disabled={!allQuizAnswered || quizStatus === "SUBMITTING"}
+                        onClick={() => void submitQuiz()}
+                        className={cn(
+                          "h-12 rounded-full border border-transparent px-6 text-sm font-semibold text-white transition-colors duration-200",
+                          !allQuizAnswered || quizStatus === "SUBMITTING"
+                            ? "bg-foreground/40"
+                            : "bg-[color:var(--accent)] hover:opacity-90"
+                        )}
+                      >
+                        Consigliami
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {quizStatus === "DONE" ? (
+                    <div className="grid gap-4">
+                      {quizReason ? (
+                        <div className="rounded-3xl border border-border bg-surface p-5 text-sm text-foreground">
+                          {quizReason}
+                        </div>
+                      ) : null}
+
+                      {quizRecommendedProducts.length ? (
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            Consigliati
+                          </p>
+                          <ProductList products={quizRecommendedProducts} showCategory />
+                          <div className="mt-4 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void loadQuiz()}
+                              className="h-11 rounded-full border border-border bg-white px-5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                            >
+                              Rifai quiz
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-3xl border border-border bg-surface p-5 text-sm text-muted">
+                          Nessun consiglio disponibile.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {selected ? (
           <div className="fixed inset-0 z-50">

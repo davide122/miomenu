@@ -3,14 +3,23 @@ import { ButtonLink } from "@/components/ui/button"
 import { ExperienceBuilder } from "@/components/dashboard/experience-builder"
 import { requireDashboardContext } from "@/lib/auth/current"
 import { prisma } from "@/lib/db"
+import { formatPrice } from "@/lib/money"
 
 export default async function MenuPage() {
   const { business } = await requireDashboardContext()
-  const screen = await prisma.screen.findFirst({
-    where: { businessId: business.id },
-    orderBy: { createdAt: "asc" },
-    select: { layout: true }
-  })
+  const [screen, products] = await Promise.all([
+    prisma.screen.findFirst({
+      where: { businessId: business.id },
+      orderBy: { createdAt: "asc" },
+      select: { layout: true }
+    }),
+    prisma.product.findMany({
+      where: { businessId: business.id },
+      select: { id: true, name: true, price: true, isAvailable: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      take: 120
+    })
+  ])
 
   return (
     <AppShell
@@ -26,6 +35,12 @@ export default async function MenuPage() {
       <ExperienceBuilder
         businessId={business.id}
         businessSlug={business.slug}
+        products={products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: formatPrice(p.price),
+          isAvailable: p.isAvailable
+        }))}
         initial={{
           primaryColor: business.primaryColor,
           themeMode: business.themeMode,

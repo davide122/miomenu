@@ -184,6 +184,8 @@ const menuUiSchema = z
     heroSubtitleText: z.string().min(1).max(64).optional(),
     heroTitleColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional(),
     heroSubtitleColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional(),
+    dishOfDayProductId: z.string().min(1).max(64).optional(),
+    aiQuizEnabled: z.boolean().optional(),
     showFeaturedRail: z.boolean().optional(),
     showSocial: z.boolean().optional()
   })

@@ -103,6 +103,8 @@ export default async function PublicMenuPage({
       business={{
         name: business.name,
         slug: business.slug,
+        type: business.type,
+        plan: business.plan,
         logoUrl: business.logoUrl,
         coverUrl: business.coverUrl,
         primaryColor: previewCfg?.primaryColor ?? business.primaryColor,
