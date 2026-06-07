@@ -12,6 +12,7 @@ export default async function AiPage({
   const { business } = await requireDashboardContext()
   const sp = searchParams ? await searchParams : {}
   const done = typeof sp.done === "string" ? sp.done : ""
+  const error = typeof sp.error === "string" ? sp.error : ""
 
   return (
     <AppShell
@@ -20,6 +21,11 @@ export default async function AiPage({
       description="Traduzioni e upsell automatici (piano Gold)."
     >
       <div className="grid gap-4">
+        {error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
         {done === "upsell" ? (
           <div className="rounded-2xl border border-border bg-surface-muted px-4 py-3 text-sm text-foreground">
             Upsell generati. Controlla il menu pubblico per vedere i suggerimenti.
@@ -59,4 +65,3 @@ export default async function AiPage({
     </AppShell>
   )
 }
-

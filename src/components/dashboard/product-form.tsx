@@ -102,6 +102,7 @@ export function ProductForm({
       (initial?.imageUrl3 ?? "").trim() ||
       (initial?.imageUrl4 ?? "").trim()
   )
+  const [extraPhotosOpen, setExtraPhotosOpen] = useState(extraPhotosDefaultOpen)
 
   function PreviewCard({ variant }: { variant: "desktop" | "mobile" }) {
     return (
@@ -568,7 +569,8 @@ export function ProductForm({
 
               <details
                 className="rounded-2xl border border-border bg-surface-muted p-4"
-                defaultOpen={extraPhotosDefaultOpen}
+                open={extraPhotosOpen}
+                onToggle={(e) => setExtraPhotosOpen(e.currentTarget.open)}
               >
                 <summary className="cursor-pointer text-sm font-semibold text-foreground">
                   Altre foto (opzionale)

@@ -5,10 +5,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { prisma } from "@/lib/db"
 import { requireDashboardContext } from "@/lib/auth/current"
-import { deletePromotionAction, upsertPromotionAction } from "@/lib/promotions/actions"
+import { deletePromotionAction, upsertPromotionFormAction } from "@/lib/promotions/actions"
 
-export default async function PromotionsPage() {
+export default async function PromotionsPage({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const { business } = await requireDashboardContext()
+  const sp = searchParams ? await searchParams : {}
+  const error = typeof sp.error === "string" ? sp.error : ""
 
   const promotions = await prisma.promotion.findMany({
     where: { businessId: business.id },
@@ -23,6 +29,11 @@ export default async function PromotionsPage() {
       description="Crea promo e coupon da mostrare nel menu pubblico."
     >
       <div className="grid gap-4 lg:grid-cols-[420px_1fr] lg:items-start">
+        {error ? (
+          <div className="lg:col-span-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
         <Card>
           <CardHeader>
             <CardTitle>Nuova promo</CardTitle>
@@ -31,7 +42,7 @@ export default async function PromotionsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={upsertPromotionAction} className="grid gap-4">
+            <form action={upsertPromotionFormAction} className="grid gap-4">
               <input type="hidden" name="id" value="" />
               <div className="grid gap-2">
                 <Label htmlFor="code">Codice</Label>
@@ -96,7 +107,7 @@ export default async function PromotionsPage() {
                     </div>
 
                     <div className="mt-3">
-                      <form action={upsertPromotionAction} className="grid gap-3 sm:grid-cols-2">
+                      <form action={upsertPromotionFormAction} className="grid gap-3 sm:grid-cols-2">
                         <input type="hidden" name="id" value={p.id} />
                         <input type="hidden" name="code" value={p.code} />
                         <input type="hidden" name="title" value={p.title} />
@@ -125,4 +136,3 @@ export default async function PromotionsPage() {
     </AppShell>
   )
 }
-

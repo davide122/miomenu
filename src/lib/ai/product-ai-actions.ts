@@ -10,7 +10,7 @@ import { getEnv } from "@/lib/env"
 
 function requireGoldPlan(plan: string) {
   if (plan !== "GOLD") {
-    return { ok: false as const, error: "Funzione AI disponibile solo con il piano Gold." }
+    return "Funzione AI disponibile solo con il piano Gold."
   }
   return null
 }
@@ -22,7 +22,11 @@ function requireOpenAi() {
   }
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY })
   const model = env.OPENAI_MODEL ?? "gpt-4o-mini"
-  return { client, model }
+  return { ok: true as const, client, model }
+}
+
+function redirectWithError(path: string, error: string): never {
+  redirect(`${path}?error=${encodeURIComponent(error)}`)
 }
 
 const translationSchema = z.object({
@@ -32,13 +36,16 @@ const translationSchema = z.object({
   ingredients: z.string().optional().or(z.literal(""))
 })
 
-export async function generateProductEnglishTranslationAction(formData: FormData) {
+export async function generateProductEnglishTranslationAction(formData: FormData): Promise<void> {
   const { business } = await requireDashboardContext()
   const planGuard = requireGoldPlan(business.plan)
-  if (planGuard) return planGuard
-
   const productId = String(formData.get("productId") || "")
-  if (!productId) return { ok: false as const, error: "Prodotto non valido." }
+  if (planGuard) {
+    if (productId) redirectWithError(`/dashboard/products/${productId}/edit`, planGuard)
+    redirectWithError("/dashboard/products", planGuard)
+  }
+
+  if (!productId) redirectWithError("/dashboard/products", "Prodotto non valido.")
 
   const product = await prisma.product.findFirst({
     where: { id: productId, businessId: business.id },
@@ -51,10 +58,10 @@ export async function generateProductEnglishTranslationAction(formData: FormData
       translations: true
     }
   })
-  if (!product) return { ok: false as const, error: "Prodotto non valido." }
+  if (!product) redirectWithError("/dashboard/products", "Prodotto non valido.")
 
   const ai = requireOpenAi()
-  if ("ok" in ai) return ai
+  if (!ai.ok) redirectWithError(`/dashboard/products/${product.id}/edit`, ai.error)
 
   const system = [
     "You are a professional food menu copywriter and translator.",
@@ -94,7 +101,7 @@ export async function generateProductEnglishTranslationAction(formData: FormData
     const content = res.choices[0]?.message?.content ?? ""
     const json = JSON.parse(content) as unknown
     const parsed = translationSchema.safeParse(json)
-    if (!parsed.success) return { ok: false as const, error: "Risposta AI non valida." }
+    if (!parsed.success) redirectWithError(`/dashboard/products/${product.id}/edit`, "Risposta AI non valida.")
 
     const existing = (product.translations as Record<string, unknown> | null) ?? {}
     const next = { ...existing, en: parsed.data }
@@ -104,21 +111,21 @@ export async function generateProductEnglishTranslationAction(formData: FormData
       data: { translations: next as never }
     })
 
-    return { ok: true as const }
+    redirect(`/dashboard/products/${product.id}/edit?done=translate-en`)
   } catch {
-    return { ok: false as const, error: "AI non disponibile in questo momento." }
+    redirectWithError(`/dashboard/products/${product.id}/edit`, "AI non disponibile in questo momento.")
   }
 }
 
 const upsellSchema = z.record(z.string(), z.array(z.string()).max(3))
 
-export async function generateUpsellsForBusinessAction() {
+export async function generateUpsellsForBusinessAction(_: FormData): Promise<void> {
   const { business } = await requireDashboardContext()
   const planGuard = requireGoldPlan(business.plan)
-  if (planGuard) return planGuard
+  if (planGuard) redirectWithError("/dashboard/ai", planGuard)
 
   const ai = requireOpenAi()
-  if ("ok" in ai) return ai
+  if (!ai.ok) redirectWithError("/dashboard/ai", ai.error)
 
   const products = await prisma.product.findMany({
     where: { businessId: business.id },
@@ -134,7 +141,7 @@ export async function generateUpsellsForBusinessAction() {
   })
 
   if (products.length < 3) {
-    return { ok: false as const, error: "Aggiungi almeno 3 prodotti per generare gli upsell." }
+    redirectWithError("/dashboard/ai", "Aggiungi almeno 3 prodotti per generare gli upsell.")
   }
 
   const system = [
@@ -178,7 +185,7 @@ export async function generateUpsellsForBusinessAction() {
     const content = res.choices[0]?.message?.content ?? ""
     const json = JSON.parse(content) as unknown
     const parsed = upsellSchema.safeParse(json)
-    if (!parsed.success) return { ok: false as const, error: "Risposta AI non valida." }
+    if (!parsed.success) redirectWithError("/dashboard/ai", "Risposta AI non valida.")
 
     const ids = new Set(products.map((p) => p.id))
     const updates: Array<{ id: string; upsellProductIds: string[] }> = []
@@ -199,7 +206,6 @@ export async function generateUpsellsForBusinessAction() {
 
     redirect("/dashboard/ai?done=upsell")
   } catch {
-    return { ok: false as const, error: "AI non disponibile in questo momento." }
+    redirectWithError("/dashboard/ai", "AI non disponibile in questo momento.")
   }
 }
-

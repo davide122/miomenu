@@ -9,12 +9,17 @@ import { upsertProductAction } from "@/lib/menu/product-actions"
 import { generateProductEnglishTranslationAction } from "@/lib/ai/product-ai-actions"
 
 export default async function EditProductPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { business } = await requireDashboardContext()
   const { id } = await params
+  const sp = searchParams ? await searchParams : {}
+  const done = typeof sp.done === "string" ? sp.done : ""
+  const error = typeof sp.error === "string" ? sp.error : ""
 
   const [product, categories] = await Promise.all([
     prisma.product.findFirst({
@@ -58,6 +63,16 @@ export default async function EditProductPage({
         </form>
       }
     >
+      {error ? (
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
+      {done === "translate-en" ? (
+        <div className="mb-4 rounded-2xl border border-border bg-surface-muted px-4 py-3 text-sm text-foreground">
+          Traduzione EN generata.
+        </div>
+      ) : null}
       <ProductForm
         title="Modifica prodotto"
         submitLabel="Salva"

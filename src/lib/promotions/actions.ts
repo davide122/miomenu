@@ -63,6 +63,14 @@ export async function upsertPromotionAction(_prev: unknown, formData: FormData) 
   redirect("/dashboard/promotions")
 }
 
+export async function upsertPromotionFormAction(formData: FormData): Promise<void> {
+  const res = await upsertPromotionAction(undefined, formData)
+  if (res && "ok" in res && res.ok === false) {
+    redirect(`/dashboard/promotions?error=${encodeURIComponent(res.error)}`)
+  }
+  redirect("/dashboard/promotions")
+}
+
 export async function deletePromotionAction(formData: FormData) {
   const { business } = await requireDashboardContext()
   const id = String(formData.get("id") || "")
@@ -74,4 +82,3 @@ export async function deletePromotionAction(formData: FormData) {
   await prisma.promotion.delete({ where: { id: promo.id } })
   redirect("/dashboard/promotions")
 }
-
