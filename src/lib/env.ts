@@ -4,6 +4,18 @@ const envSchema = z.object({
   AUTH_SECRET: z.string().min(16),
   APP_URL: z.string().url().optional(),
 
+  MAIL_FROM: z.string().min(3).optional(),
+
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASS: z.string().min(1).optional(),
+  SMTP_FROM: z.string().min(3).optional(),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v ? v === "true" : undefined)),
+
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_MODEL: z.string().min(1).optional(),
 
@@ -35,6 +47,15 @@ export function getEnv() {
   cached = envSchema.parse({
     AUTH_SECRET: process.env.AUTH_SECRET,
     APP_URL: clean(process.env.APP_URL),
+
+    MAIL_FROM: clean(process.env.MAIL_FROM) ?? clean(process.env.SMTP_FROM),
+
+    SMTP_HOST: clean(process.env.SMTP_HOST),
+    SMTP_PORT: clean(process.env.SMTP_PORT),
+    SMTP_USER: clean(process.env.SMTP_USER),
+    SMTP_PASS: clean(process.env.SMTP_PASS),
+    SMTP_FROM: clean(process.env.SMTP_FROM),
+    SMTP_SECURE: clean(process.env.SMTP_SECURE),
 
     OPENAI_API_KEY: clean(process.env.OPENAI_API_KEY),
     OPENAI_MODEL: clean(process.env.OPENAI_MODEL),

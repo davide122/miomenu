@@ -55,6 +55,13 @@ type QuizQuestion = {
   options: Array<{ id: string; label: string }>
 }
 
+type PersonalizationQuestion = {
+  id: string
+  text: string
+  multi?: boolean
+  options: Array<{ id: string; label: string }>
+}
+
 function normalize(text: string) {
   return text
     .toLowerCase()
@@ -136,6 +143,16 @@ export function PublicMenuClient({
   const [quizRecommendedIds, setQuizRecommendedIds] = useState<string[]>([])
   const [quizReason, setQuizReason] = useState("")
   const [quizError, setQuizError] = useState("")
+  const [quizOrderStatus, setQuizOrderStatus] = useState<"IDLE" | "CREATING" | "DONE" | "ERROR">("IDLE")
+  const [quizOrderId, setQuizOrderId] = useState("")
+  const [quizOrderTitle, setQuizOrderTitle] = useState("")
+  const [quizOrderNotes, setQuizOrderNotes] = useState("")
+  const [quizOrderQrUrl, setQuizOrderQrUrl] = useState("")
+  const [quizBaseProductId, setQuizBaseProductId] = useState("")
+  const [basePickerOpen, setBasePickerOpen] = useState(false)
+  const [personalizeStatus, setPersonalizeStatus] = useState<"IDLE" | "LOADING" | "READY" | "ERROR">("IDLE")
+  const [personalizeQuestions, setPersonalizeQuestions] = useState<PersonalizationQuestion[]>([])
+  const [personalizeAnswers, setPersonalizeAnswers] = useState<Record<string, string[]>>({})
   const [sheetMediaIndex, setSheetMediaIndex] = useState(0)
 
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -525,6 +542,15 @@ export function PublicMenuClient({
     setQuizAnswers({})
     setQuizRecommendedIds([])
     setQuizReason("")
+    setQuizOrderStatus("IDLE")
+    setQuizOrderId("")
+    setQuizOrderTitle("")
+    setQuizOrderNotes("")
+    setQuizOrderQrUrl("")
+    setQuizBaseProductId("")
+    setPersonalizeStatus("IDLE")
+    setPersonalizeQuestions([])
+    setPersonalizeAnswers({})
 
     try {
       const res = await fetch("/api/ai/quiz", {
@@ -582,9 +608,125 @@ export function PublicMenuClient({
 
       setQuizRecommendedIds(data.recommendedProductIds)
       setQuizReason(data.reason ?? "")
+      const baseId = data.recommendedProductIds[0] ?? ""
+      setQuizBaseProductId(baseId)
+      setBasePickerOpen(false)
+      setPersonalizeStatus("IDLE")
+      setPersonalizeQuestions([])
+      setPersonalizeAnswers({})
+      if (baseId) void loadPersonalization(baseId)
       setQuizStatus("DONE")
     } catch {
       setQuizStatus("ERROR")
+      setQuizError("AI non disponibile in questo momento.")
+    }
+  }
+
+  async function loadPersonalization(baseProductId: string) {
+    if (!baseProductId) return
+    setQuizError("")
+    setPersonalizeStatus("LOADING")
+    setPersonalizeQuestions([])
+    setPersonalizeAnswers({})
+    setQuizOrderStatus("IDLE")
+    setQuizOrderId("")
+    setQuizOrderTitle("")
+    setQuizOrderNotes("")
+    setQuizOrderQrUrl("")
+
+    try {
+      const res = await fetch("/api/ai/quiz", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          businessSlug: business.slug,
+          mode: "personalize_init",
+          lang,
+          answers: quizAnswers,
+          baseProductId
+        })
+      })
+      const data = (await res.json()) as
+        | { ok: true; baseProductId: string; questions: PersonalizationQuestion[] }
+        | { ok: false; error: string }
+
+      if (!res.ok || !data.ok) {
+        setPersonalizeStatus("ERROR")
+        setQuizError(data.ok ? "AI non disponibile." : data.error)
+        return
+      }
+
+      setPersonalizeQuestions(data.questions ?? [])
+      setPersonalizeStatus("READY")
+    } catch {
+      setPersonalizeStatus("ERROR")
+      setQuizError("AI non disponibile in questo momento.")
+    }
+  }
+
+  function togglePersonalAnswer(questionId: string, optionId: string, multi?: boolean) {
+    setPersonalizeAnswers((prev) => {
+      const current = prev[questionId] ?? []
+      if (!multi) return { ...prev, [questionId]: [optionId] }
+      if (optionId === "none") return { ...prev, [questionId]: ["none"] }
+      const withoutNone = current.filter((x) => x !== "none")
+      const exists = withoutNone.includes(optionId)
+      const next = exists ? withoutNone.filter((x) => x !== optionId) : withoutNone.concat(optionId)
+      return { ...prev, [questionId]: next.length ? next : ["none"] }
+    })
+  }
+
+  async function createQuizOrder() {
+    if (!allQuizAnswered) return
+    if (!quizBaseProductId) return
+    setQuizError("")
+    setQuizOrderStatus("CREATING")
+    setQuizOrderId("")
+    setQuizOrderTitle("")
+    setQuizOrderNotes("")
+    setQuizOrderQrUrl("")
+
+    try {
+      const personalizationSummary = personalizeQuestions
+        .map((q) => {
+          const picked = (personalizeAnswers[q.id] ?? []).filter((id) => id !== "none")
+          const selected = picked
+            .map((id) => q.options.find((o) => o.id === id)?.label ?? "")
+            .filter(Boolean)
+          return { question: q.text, selected }
+        })
+        .filter((x) => x.selected.length)
+
+      const res = await fetch("/api/ai/quiz", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          businessSlug: business.slug,
+          mode: "create_order",
+          lang,
+          answers: quizAnswers,
+          baseProductId: quizBaseProductId,
+          personalization: personalizeAnswers,
+          personalizationSummary
+        })
+      })
+      const data = (await res.json()) as
+        | { ok: true; orderId: string; qrUrl: string; title: string; notes?: string }
+        | { ok: false; error: string }
+
+      if (!res.ok || !data.ok) {
+        setQuizOrderStatus("ERROR")
+        setQuizError(data.ok ? "AI non disponibile." : data.error)
+        return
+      }
+
+      setQuizOrderId(data.orderId)
+      setQuizOrderQrUrl(data.qrUrl)
+      setQuizOrderTitle(data.title)
+      setQuizOrderNotes(data.notes ?? "")
+      setQuizOrderStatus("DONE")
+    } catch {
+      setQuizOrderStatus("ERROR")
       setQuizError("AI non disponibile in questo momento.")
     }
   }
@@ -678,18 +820,14 @@ export function PublicMenuClient({
 
     const body = document.body
     if (!bodyLockRef.current) {
-      const scrollY = window.scrollY
       bodyLockRef.current = {
-        scrollY,
+        scrollY: window.scrollY,
         overflow: body.style.overflow,
         position: body.style.position,
         top: body.style.top,
         width: body.style.width
       }
       body.style.overflow = "hidden"
-      body.style.position = "fixed"
-      body.style.top = `-${scrollY}px`
-      body.style.width = "100%"
     }
 
     const raf = window.requestAnimationFrame(() => {
@@ -706,16 +844,11 @@ export function PublicMenuClient({
     if (selectedProductId || quizOpen) return
     if (!bodyLockRef.current) return
 
-    const { scrollY, overflow, position, top, width } = bodyLockRef.current
+    const { overflow } = bodyLockRef.current
     bodyLockRef.current = null
 
     const body = document.body
     body.style.overflow = overflow
-    body.style.position = position
-    body.style.top = top
-    body.style.width = width
-
-    window.scrollTo(0, scrollY)
     lastFocusedRef.current?.focus?.()
   }, [quizOpen, selectedProductId])
 
@@ -891,32 +1024,7 @@ export function PublicMenuClient({
                 </div>
 
                 <div className="flex flex-none items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = lang === "it" ? "en" : "it"
-                      setLang(next)
-                      const url = new URL(window.location.href)
-                      if (next === "it") url.searchParams.delete("lang")
-                      else url.searchParams.set("lang", next)
-                      window.history.replaceState(null, "", url.toString())
-                    }}
-                    aria-label="Cambia lingua"
-                    className={cn(
-                      "h-11 rounded-2xl border px-3 text-sm font-semibold transition-colors duration-200",
-                      heroHeaderStyle === "glass"
-                        ? isHeroDark
-                          ? "border-white/20 bg-white/10 text-white backdrop-blur-xl hover:bg-white/15"
-                          : "border-border bg-surface-glass text-foreground backdrop-blur-xl hover:bg-surface"
-                        : heroHeaderStyle === "solid"
-                          ? "border-transparent bg-white text-foreground hover:bg-white/95"
-                          : isHeroDark
-                            ? "border-white/25 bg-transparent text-white hover:bg-white/10"
-                            : "border-border bg-transparent text-foreground hover:bg-surface"
-                    )}
-                  >
-                    {lang.toUpperCase()}
-                  </button>
+                 
                   {allowSocial && business.whatsapp ? (
                     <a
                       href={`https://wa.me/${business.whatsapp.replace(/[^0-9]/g, "")}`}
@@ -1539,21 +1647,195 @@ export function PublicMenuClient({
                             Consigliati
                           </p>
                           <ProductList products={quizRecommendedProducts} showCategory />
-                          <div className="mt-4 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void loadQuiz()}
-                              className="h-11 rounded-full border border-border bg-white px-5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-surface-muted"
-                            >
-                              Rifai quiz
-                            </button>
-                          </div>
                         </div>
                       ) : (
                         <div className="rounded-3xl border border-border bg-surface p-5 text-sm text-muted">
                           Nessun consiglio disponibile.
                         </div>
                       )}
+
+                      <div className="rounded-3xl border border-border bg-white p-5">
+                        <p className="text-sm font-semibold text-foreground">Personalizza il consiglio</p>
+                        <p className="mt-1 text-sm text-muted">
+                          Se non ti piace al 100%, scegli una base e aggiusta topping/extra. Alla fine generiamo un QR da mostrare al personale.
+                        </p>
+
+                        {quizRecommendedProducts.length ? (
+                          <div className="mt-4">
+                            <p className="text-xs font-semibold text-muted">Scegli base</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {quizRecommendedProducts.map((p) => {
+                                const active = quizBaseProductId === p.id
+                                return (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setQuizBaseProductId(p.id)
+                                      setBasePickerOpen(false)
+                                      setPersonalizeStatus("IDLE")
+                                      setPersonalizeQuestions([])
+                                      setPersonalizeAnswers({})
+                                      setQuizOrderStatus("IDLE")
+                                      setQuizOrderId("")
+                                      setQuizOrderTitle("")
+                                      setQuizOrderNotes("")
+                                      setQuizOrderQrUrl("")
+                                      void loadPersonalization(p.id)
+                                    }}
+                                    className={cn(
+                                      "h-10 rounded-full border px-4 text-sm font-medium transition-colors duration-200",
+                                      active
+                                        ? "border-transparent bg-[color:var(--brand)] text-white"
+                                        : "border-border bg-white text-foreground hover:bg-surface-muted"
+                                    )}
+                                  >
+                                    {p.name}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <div className="mt-3">
+                              <button
+                                type="button"
+                                onClick={() => setBasePickerOpen((v) => !v)}
+                                className="h-10 rounded-full border border-border bg-white px-4 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                              >
+                                {basePickerOpen ? "Chiudi lista completa" : "Scegli da tutto il menu"}
+                              </button>
+                            </div>
+                            {basePickerOpen ? (
+                              <div className="mt-3">
+                                <div className="overflow-hidden rounded-3xl border border-border bg-white shadow-soft">
+                                  <div className="max-h-[360px] overflow-y-auto">
+                                    {allProducts.map((p) => {
+                                      const t = getTranslatedProduct(p)
+                                      return (
+                                        <button
+                                          key={p.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setQuizBaseProductId(p.id)
+                                            setBasePickerOpen(false)
+                                            setPersonalizeStatus("IDLE")
+                                            setPersonalizeQuestions([])
+                                            setPersonalizeAnswers({})
+                                            setQuizOrderStatus("IDLE")
+                                            setQuizOrderId("")
+                                            setQuizOrderTitle("")
+                                            setQuizOrderNotes("")
+                                            setQuizOrderQrUrl("")
+                                            void loadPersonalization(p.id)
+                                          }}
+                                          className="flex w-full items-center justify-between gap-3 border-b border-border px-4 py-3 text-left transition-colors duration-200 last:border-b-0 hover:bg-surface-muted"
+                                        >
+                                          <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-foreground">{t.name}</p>
+                                            <p className="mt-0.5 truncate text-xs text-muted">{t.categoryName}</p>
+                                          </div>
+                                          {t.price ? (
+                                            <div className="flex-none rounded-full bg-surface-muted px-3 py-1 text-sm font-semibold text-foreground">
+                                              € {t.price}
+                                            </div>
+                                          ) : null}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {personalizeStatus === "READY" ? (
+                          <div className="mt-4 grid gap-4">
+                            {personalizeQuestions.map((q) => (
+                              <div key={q.id} className="rounded-3xl border border-border bg-surface p-5">
+                                <p className="text-sm font-semibold text-foreground">{q.text}</p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {q.options.map((o) => {
+                                    const selected = (personalizeAnswers[q.id] ?? []).includes(o.id)
+                                    return (
+                                      <button
+                                        key={o.id}
+                                        type="button"
+                                        onClick={() => togglePersonalAnswer(q.id, o.id, q.multi)}
+                                        className={cn(
+                                          "h-10 rounded-full border px-4 text-sm font-medium transition-colors duration-200",
+                                          selected
+                                            ? "border-transparent bg-[color:var(--brand)] text-white"
+                                            : "border-border bg-white text-foreground hover:bg-surface-muted"
+                                        )}
+                                      >
+                                        {o.label}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+
+                          </div>
+                        ) : null}
+
+                        {personalizeStatus === "ERROR" ? (
+                          <div className="mt-4 rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                            {quizError || "AI non disponibile."}
+                          </div>
+                        ) : null}
+
+                        {quizOrderStatus === "DONE" ? (
+                          <div className="mt-4 grid gap-3">
+                            <div className="rounded-3xl border border-border bg-surface p-4">
+                              <p className="text-sm font-semibold text-foreground">{quizOrderTitle}</p>
+                              {quizOrderNotes ? (
+                                <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{quizOrderNotes}</p>
+                              ) : null}
+                            </div>
+                            <div className="grid place-items-center rounded-3xl border border-border bg-white p-4">
+                              <img
+                                alt="QR comanda speciale"
+                                className="h-56 w-56"
+                                src={`/api/qrcode?format=png&text=${encodeURIComponent(quizOrderQrUrl)}`}
+                              />
+                              <p className="mt-3 text-xs text-muted">Scansionalo per aprire la comanda</p>
+                            </div>
+                            <a
+                              href={`/order/${quizOrderId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex h-11 items-center justify-center rounded-full bg-[color:var(--accent)] px-5 text-sm font-semibold text-white transition-colors duration-200 hover:opacity-90"
+                            >
+                              Apri comanda
+                            </a>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={quizOrderStatus === "CREATING" || !quizBaseProductId}
+                            onClick={() => void createQuizOrder()}
+                            className={cn(
+                              "mt-4 h-11 w-full rounded-full border border-transparent px-5 text-sm font-semibold text-white transition-colors duration-200",
+                              quizOrderStatus === "CREATING" || !quizBaseProductId
+                                ? "bg-foreground/40"
+                                : "bg-[color:var(--accent)] hover:opacity-90"
+                            )}
+                          >
+                            {quizOrderStatus === "CREATING" ? "Creo il QR…" : "Genera QR comanda"}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void loadQuiz()}
+                          className="h-11 rounded-full border border-border bg-white px-5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                        >
+                          Rifai quiz
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -1577,10 +1859,10 @@ export function PublicMenuClient({
 
             <div
               className={cn(
-                "absolute inset-x-0 bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2",
-                "transition-transform ease-out",
+                "absolute inset-0",
+                "transition-opacity ease-out",
                 reduceMotion ? "duration-0" : "duration-200",
-                isSheetClosing ? "translate-y-[12%]" : "translate-y-0"
+                isSheetClosing ? "opacity-0" : "opacity-100"
               )}
             >
               <div
@@ -1588,16 +1870,46 @@ export function PublicMenuClient({
                 aria-modal="true"
                 aria-labelledby={`sheet_title_${selected.id}`}
                 className={cn(
-                  "relative overflow-hidden rounded-t-[34px] border border-border bg-white",
-                  "shadow-[0_-30px_80px_rgba(0,0,0,0.35)]",
-                  "max-h-[88vh]"
+                  "relative h-[100dvh] w-full overscroll-contain overflow-y-auto bg-white [-webkit-overflow-scrolling:touch]"
                 )}
               >
-                <div className="flex items-center justify-center py-2">
-                  <div className="h-1.5 w-12 rounded-full bg-border" />
+                <div className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-border bg-white/95 px-5 pb-3 pt-[calc(env(safe-area-inset-top)+16px)] backdrop-blur">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-muted">
+                      {selected.categoryName}
+                    </p>
+                    <h2
+                      id={`sheet_title_${selected.id}`}
+                      className="mt-1 truncate text-base font-semibold tracking-tight text-foreground"
+                    >
+                      {selected.name}
+                    </h2>
+                  </div>
+                  <div className="flex flex-none items-center gap-2">
+                    {selected.price ? (
+                      <div className="rounded-full bg-surface-muted px-3 py-1 text-sm font-semibold text-foreground">
+                        € {selected.price}
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => void shareSelectedProduct()}
+                      className="h-10 rounded-full border border-border bg-white px-4 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                    >
+                      {shareStatus === "COPIED" ? uiText.copied : uiText.share}
+                    </button>
+                    <button
+                      ref={closeBtnRef}
+                      type="button"
+                      onClick={closeSheet}
+                      className="h-10 rounded-full border border-border bg-white px-4 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-surface-muted"
+                    >
+                      {uiText.close}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="relative h-56 w-full bg-background">
+                <div className="relative h-[42vh] w-full bg-background sm:h-[46vh]">
                   {(selected.imageUrls?.[sheetMediaIndex] ?? selected.imageUrl) ? (
                     <Image
                       src={(selected.imageUrls?.[sheetMediaIndex] ?? selected.imageUrl) as string}
@@ -1619,9 +1931,8 @@ export function PublicMenuClient({
                   ) : (
                     <div className="h-full w-full bg-[color:var(--brand)]/10" />
                   )}
-                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" />
                   {selected.imageUrls.length > 1 ? (
-                    <div className="absolute inset-x-0 bottom-24 px-5">
+                    <div className="absolute inset-x-0 bottom-4 px-5">
                       <div className="-mx-1 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                         {selected.imageUrls.map((url, idx) => (
                           <button
@@ -1632,8 +1943,8 @@ export function PublicMenuClient({
                             className={cn(
                               "relative h-11 w-11 flex-none overflow-hidden rounded-2xl border",
                               idx === sheetMediaIndex
-                                ? "border-white/70"
-                                : "border-white/20"
+                                ? "border-white/80"
+                                : "border-white/30"
                             )}
                           >
                             <Image
@@ -1649,47 +1960,9 @@ export function PublicMenuClient({
                       </div>
                     </div>
                   ) : null}
-                  <div className="absolute right-4 top-4 flex items-center gap-2">
-                    <button
-                      ref={closeBtnRef}
-                      type="button"
-                      onClick={closeSheet}
-                      className="h-10 rounded-full border border-white/20 bg-white/85 px-4 text-sm font-semibold text-foreground backdrop-blur transition-colors duration-200 hover:bg-white"
-                    >
-                      {uiText.close}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void shareSelectedProduct()}
-                      className="h-10 rounded-full border border-white/20 bg-white/85 px-4 text-sm font-semibold text-foreground backdrop-blur transition-colors duration-200 hover:bg-white"
-                    >
-                      {shareStatus === "COPIED" ? uiText.copied : uiText.share}
-                    </button>
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 px-5 pb-4">
-                    <div className="flex items-end justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-medium text-white/80">
-                          {selected.categoryName}
-                        </p>
-                        <h2
-                          id={`sheet_title_${selected.id}`}
-                          className="mt-1 truncate text-lg font-semibold tracking-tight text-white"
-                        >
-                          {selected.name}
-                        </h2>
-                      </div>
-                      {selected.price ? (
-                        <div className="flex-none rounded-full bg-white/90 px-3 py-1 text-base font-semibold text-foreground backdrop-blur">
-                          € {selected.price}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
                 </div>
 
-                <div className="flex max-h-[calc(88vh-15rem)] flex-col">
-                  <div className="flex-1 overflow-y-auto px-5 pb-8 pt-4">
+                <div className="px-5 pb-32 pt-4">
                     <div className="flex flex-wrap items-center gap-2">
                       {!selected.isAvailable ? (
                         <Badge variant="danger">Non disponibile</Badge>
@@ -1800,42 +2073,10 @@ export function PublicMenuClient({
                         </div>
                       </div>
                     ) : null}
-                  </div>
+                </div>
 
-                  <div className="border-t border-border bg-white/95 px-5 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-4 backdrop-blur">
-                    {business.whatsapp ? (
-                      <a
-                        className={cn(
-                          "group inline-flex h-12 w-full items-center justify-between rounded-2xl px-5 text-sm font-semibold text-white shadow-soft transition-transform duration-200 active:scale-[0.99]",
-                          selected.isAvailable ? "" : "opacity-80"
-                        )}
-                        style={{
-                          backgroundImage:
-                            "linear-gradient(135deg, var(--accent), rgba(34,197,94,0.95))"
-                        }}
-                        href={`https://wa.me/${business.whatsapp.replace(/[^\d]/g, "")}?text=${encodeURIComponent(
-                          selected.isAvailable
-                            ? `Ciao! Vorrei ordinare: ${selected.name}`
-                            : `Ciao! Mi interessa: ${selected.name}. È disponibile?`
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate">
-                            {selected.isAvailable ? "Ordina su WhatsApp" : "Chiedi su WhatsApp"}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs font-medium text-white/85">
-                            Messaggio già pronto, invio in 1 tap
-                          </p>
-                        </div>
-                        <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20 transition-colors duration-200 group-hover:bg-white/20">
-                          WA
-                        </div>
-                      </a>
-                    ) : null}
-
-                    <div className={cn("mt-3 grid gap-2", business.whatsapp ? "" : "")}>
+                <div className="sticky bottom-0 z-20 border-t border-border bg-white/95 px-5 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-4 backdrop-blur">
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => closeThen(() => scrollToProduct(selected.id))}
@@ -1852,7 +2093,6 @@ export function PublicMenuClient({
                       </button>
                     </div>
                   </div>
-                </div>
               </div>
             </div>
           </div>

@@ -78,6 +78,12 @@ enum AnalyticsEventType {
   SCREEN_VIEW
 }
 
+enum SpecialOrderStatus {
+  NEW
+  DONE
+  CANCELED
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String?
@@ -88,6 +94,21 @@ model User {
   updatedAt    DateTime @updatedAt
 
   businessesOwned Business[] @relation("BusinessOwner")
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }
 
 model Business {
@@ -127,6 +148,7 @@ model Business {
   schedules  Schedule[]
   events     AnalyticsEvent[]
   promotions Promotion[]
+  specialOrders SpecialOrder[]
 }
 
 model Menu {
@@ -187,9 +209,29 @@ model Product {
   allergens     ProductAllergen[]
   playlistItems PlaylistItem[]
   events        AnalyticsEvent[]
+  specialOrdersAsBase SpecialOrder[] @relation("SpecialOrderBaseProduct")
 
   @@index([businessId])
   @@index([categoryId])
+}
+
+model SpecialOrder {
+  id        String            @id @default(cuid())
+  businessId String
+  status    SpecialOrderStatus @default(NEW)
+  title     String
+  notes     String?
+  answers   Json?
+  recommendedProductIds Json?
+  baseProductId String?
+  createdAt DateTime          @default(now())
+  completedAt DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  baseProduct Product? @relation("SpecialOrderBaseProduct", fields: [baseProductId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@index([status])
 }
 
 model Promotion {

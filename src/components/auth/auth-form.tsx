@@ -16,7 +16,9 @@ export function AuthForm({
   submitLabel,
   secondaryText,
   secondaryHref,
-  showName
+  showName,
+  tertiaryText,
+  tertiaryHref
 }: {
   title: string
   subtitle?: string
@@ -25,6 +27,8 @@ export function AuthForm({
   secondaryText: string
   secondaryHref: string
   showName?: boolean
+  tertiaryText?: string
+  tertiaryHref?: string
 }) {
   const [state, formAction, pending] = useActionState(action, undefined)
   const effectiveSubtitle =
@@ -82,6 +86,16 @@ export function AuthForm({
             autoComplete={showName ? "new-password" : "current-password"}
             required
           />
+          {tertiaryHref && tertiaryText ? (
+            <div className="flex justify-end">
+              <Link
+                href={tertiaryHref}
+                className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                {tertiaryText}
+              </Link>
+            </div>
+          ) : null}
         </div>
 
         {state?.error ? (

@@ -10,6 +10,7 @@ const navItems: DashboardNavItem[] = [
   { href: "/dashboard/menu", label: "Menu", icon: "menu" },
   { href: "/dashboard/categories", label: "Categorie", icon: "categories" },
   { href: "/dashboard/products", label: "Prodotti", icon: "products" },
+  { href: "/dashboard/orders", label: "Comande", icon: "orders" },
   { href: "/dashboard/promotions", label: "Promo", icon: "promotions" },
   { href: "/dashboard/ai", label: "AI", icon: "ai" },
   { href: "/dashboard/media", label: "Media", icon: "media" },
@@ -22,11 +23,11 @@ const navItems: DashboardNavItem[] = [
 ]
 
 const mobileNavItems: DashboardNavItem[] = [
-  navItems[0],
-  navItems[3],
-  navItems[4],
-  navItems[6],
-  navItems[11]
+  navItems.find((i) => i.href === "/dashboard")!,
+  navItems.find((i) => i.href === "/dashboard/products")!,
+  navItems.find((i) => i.href === "/dashboard/promotions")!,
+  navItems.find((i) => i.href === "/dashboard/orders")!,
+  navItems.find((i) => i.href === "/dashboard/settings")!
 ]
 
 export async function AppShell({

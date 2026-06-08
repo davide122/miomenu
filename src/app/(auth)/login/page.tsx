@@ -10,6 +10,8 @@ export default function LoginPage() {
       submitLabel="Accedi"
       secondaryText="Non hai un account? Registrati"
       secondaryHref="/register"
+      tertiaryText="Password dimenticata?"
+      tertiaryHref="/forgot-password"
     />
   )
 }

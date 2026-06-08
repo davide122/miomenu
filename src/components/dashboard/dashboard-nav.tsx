@@ -14,6 +14,7 @@ export type DashboardNavItem = {
     | "menu"
     | "categories"
     | "products"
+    | "orders"
     | "media"
     | "qrcode"
     | "screens"
@@ -93,6 +94,23 @@ function Icon({ name, className }: { name: DashboardNavItem["icon"]; className?:
             stroke="currentColor"
             strokeWidth="1.7"
             strokeLinecap="round"
+          />
+        </svg>
+      )
+    case "orders":
+      return (
+        <svg viewBox="0 0 24 24" className={cls} fill="none" aria-hidden="true">
+          <path
+            d="M8 7h8M8 11h8M8 15h5"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+          />
+          <path
+            d="M7 4.8h10A2.2 2.2 0 0 1 19.2 7v12A2.2 2.2 0 0 1 17 21.2H7A2.2 2.2 0 0 1 4.8 19V7A2.2 2.2 0 0 1 7 4.8Z"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinejoin="round"
           />
         </svg>
       )
