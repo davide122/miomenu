@@ -6,6 +6,7 @@ import { requireDashboardContext } from "@/lib/auth/current"
 
 export default async function DashboardPage() {
   const { business } = await requireDashboardContext()
+  const queryStartedAt = Date.now()
 
   const [products, categories, qrCodes, screens, recentScans] =
     await Promise.all([
@@ -15,10 +16,34 @@ export default async function DashboardPage() {
       prisma.screen.count({ where: { businessId: business.id } }),
       prisma.analyticsEvent.findMany({
         where: { businessId: business.id, type: "QR_SCAN" },
+        select: { id: true, createdAt: true },
         orderBy: { createdAt: "desc" },
         take: 10
       })
     ])
+
+  // #region debug-point C:dashboard-overview-query
+  void fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    body: JSON.stringify({
+      sessionId: "dashboard-tab-lag",
+      runId: "post-fix",
+      hypothesisId: "C",
+      location: "src/app/dashboard/page.tsx",
+      msg: "[DEBUG] dashboard overview query done",
+      data: {
+        route: "/dashboard",
+        durationMs: Date.now() - queryStartedAt,
+        products,
+        categories,
+        qrCodes,
+        screens,
+        recentScans: recentScans.length
+      },
+      ts: Date.now()
+    })
+  }).catch(() => {})
+  // #endregion
 
   return (
     <AppShell

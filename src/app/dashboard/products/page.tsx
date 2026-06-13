@@ -14,15 +14,47 @@ import {
 
 export default async function ProductsPage() {
   const { business } = await requireDashboardContext()
+  const queryStartedAt = Date.now()
 
   const products = await prisma.product.findMany({
     where: { businessId: business.id },
-    include: {
-      category: true,
-      media: { where: { type: "IMAGE" }, orderBy: { sortOrder: "asc" }, take: 1 }
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      isAvailable: true,
+      isFeatured: true,
+      isNew: true,
+      isPromo: true,
+      category: { select: { name: true } },
+      media: {
+        where: { type: "IMAGE" },
+        select: { type: true, url: true },
+        orderBy: { sortOrder: "asc" },
+        take: 1
+      }
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }]
   })
+
+  // #region debug-point C:dashboard-products-query
+  void fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    body: JSON.stringify({
+      sessionId: "dashboard-tab-lag",
+      runId: "post-fix",
+      hypothesisId: "C",
+      location: "src/app/dashboard/products/page.tsx",
+      msg: "[DEBUG] dashboard products query done",
+      data: {
+        route: "/dashboard/products",
+        durationMs: Date.now() - queryStartedAt,
+        count: products.length
+      },
+      ts: Date.now()
+    })
+  }).catch(() => {})
+  // #endregion
 
   return (
     <AppShell

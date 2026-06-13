@@ -1,6 +1,7 @@
 import Image from "next/image"
 
 import { AppShell } from "@/components/dashboard/app-shell"
+import { TableSignGenerator } from "@/components/dashboard/table-sign-generator"
 import { ButtonLink } from "@/components/ui/button"
 import { prisma } from "@/lib/db"
 import { requireDashboardContext } from "@/lib/auth/current"
@@ -12,14 +13,16 @@ export default async function QrCodesPage() {
 
   const qr =
     (await prisma.qrCode.findFirst({
-      where: { businessId: business.id, type: "GENERAL" }
+      where: { businessId: business.id, type: "GENERAL" },
+      select: { id: true, scans: true }
     })) ??
     (await prisma.qrCode.create({
       data: {
         businessId: business.id,
         type: "GENERAL",
         targetUrl: `/menu/${business.slug}`
-      }
+      },
+      select: { id: true, scans: true }
     }))
 
   const qrLink = `${appUrl()}/q/${qr.id}`
@@ -89,6 +92,18 @@ export default async function QrCodesPage() {
             </ButtonLink>
           </div>
         </aside>
+      </div>
+
+      <div className="mt-6">
+        <TableSignGenerator
+          businessName={business.name}
+          instagram={business.instagram}
+          whatsapp={business.whatsapp}
+          address={business.address}
+          logoUrl={business.logoUrl}
+          primaryColor={business.primaryColor}
+          qrLink={qrLink}
+        />
       </div>
     </AppShell>
   )

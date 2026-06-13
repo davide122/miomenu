@@ -41,7 +41,14 @@ export default async function OrdersPage({
 
   const orders = await prisma.specialOrder.findMany({
     where: { businessId: business.id },
-    include: { baseProduct: { select: { name: true } } },
+    select: {
+      id: true,
+      title: true,
+      notes: true,
+      status: true,
+      createdAt: true,
+      baseProduct: { select: { name: true } }
+    },
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     take: 80
   })
@@ -161,4 +168,3 @@ export default async function OrdersPage({
     </AppShell>
   )
 }
-

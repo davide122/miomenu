@@ -15,12 +15,40 @@ export default async function PromotionsPage({
   const { business } = await requireDashboardContext()
   const sp = searchParams ? await searchParams : {}
   const error = typeof sp.error === "string" ? sp.error : ""
+  const queryStartedAt = Date.now()
 
   const promotions = await prisma.promotion.findMany({
     where: { businessId: business.id },
+    select: {
+      id: true,
+      code: true,
+      title: true,
+      description: true,
+      discountPercent: true,
+      active: true
+    },
     orderBy: [{ active: "desc" }, { createdAt: "desc" }],
     take: 20
   })
+
+  // #region debug-point C:dashboard-promotions-query
+  void fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    body: JSON.stringify({
+      sessionId: "dashboard-tab-lag",
+      runId: "post-fix",
+      hypothesisId: "C",
+      location: "src/app/dashboard/promotions/page.tsx",
+      msg: "[DEBUG] dashboard promotions query done",
+      data: {
+        route: "/dashboard/promotions",
+        durationMs: Date.now() - queryStartedAt,
+        count: promotions.length
+      },
+      ts: Date.now()
+    })
+  }).catch(() => {})
+  // #endregion
 
   return (
     <AppShell

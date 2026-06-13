@@ -15,11 +15,38 @@ import {
 
 export default async function CategoriesPage() {
   const { business } = await requireDashboardContext()
+  const queryStartedAt = Date.now()
 
   const categories = await prisma.category.findMany({
     where: { businessId: business.id },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      isVisible: true,
+      sortOrder: true
+    },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
   })
+
+  // #region debug-point C:dashboard-categories-query
+  void fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    body: JSON.stringify({
+      sessionId: "dashboard-tab-lag",
+      runId: "post-fix",
+      hypothesisId: "C",
+      location: "src/app/dashboard/categories/page.tsx",
+      msg: "[DEBUG] dashboard categories query done",
+      data: {
+        route: "/dashboard/categories",
+        durationMs: Date.now() - queryStartedAt,
+        count: categories.length
+      },
+      ts: Date.now()
+    })
+  }).catch(() => {})
+  // #endregion
 
   return (
     <AppShell

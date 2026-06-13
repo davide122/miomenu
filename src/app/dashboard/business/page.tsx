@@ -10,7 +10,8 @@ export default async function BusinessOnboardingPage() {
   const session = await requireSession()
 
   const existing = await prisma.business.findFirst({
-    where: { ownerId: session.userId }
+    where: { ownerId: session.userId },
+    select: { id: true }
   })
 
   if (existing) redirect("/dashboard/settings")

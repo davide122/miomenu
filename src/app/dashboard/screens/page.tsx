@@ -9,6 +9,12 @@ export default async function ScreensPage() {
 
   const screens = await prisma.screen.findMany({
     where: { businessId: business.id },
+    select: {
+      id: true,
+      name: true,
+      layout: true,
+      status: true
+    },
     orderBy: { createdAt: "asc" }
   })
 

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { useEffect } from "react"
 
 import { cn } from "@/lib/cn"
@@ -30,6 +30,23 @@ function isActivePath(pathname: string | null, href: string) {
   const p = pathname ?? ""
   if (href === "/dashboard") return p === "/dashboard"
   return p === href || p.startsWith(`${href}/`)
+}
+
+function reportDashboardDebug(hypothesisId: string, location: string, msg: string, data: Record<string, unknown>) {
+  // #region debug-point A:dashboard-nav-report
+  fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    body: JSON.stringify({
+      sessionId: "dashboard-tab-lag",
+      runId: "post-fix",
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {})
+  // #endregion
 }
 
 function Icon({ name, className }: { name: DashboardNavItem["icon"]; className?: string }) {
@@ -304,11 +321,14 @@ function Icon({ name, className }: { name: DashboardNavItem["icon"]; className?:
 
 export function DashboardSidebarNav({ items }: { items: DashboardNavItem[] }) {
   const pathname = usePathname()
-  const router = useRouter()
 
   useEffect(() => {
-    for (const i of items) router.prefetch(i.href)
-  }, [items, router])
+    const navStart = Number(window.sessionStorage.getItem("ym_debug_dashboard_nav_start") || "0")
+    reportDashboardDebug("A", "src/components/dashboard/dashboard-nav.tsx:sidebar:path", "[DEBUG] sidebar pathname changed", {
+      pathname,
+      elapsedMs: navStart ? Date.now() - navStart : null
+    })
+  }, [pathname])
 
   return (
     <nav className="grid w-full gap-1">
@@ -318,7 +338,13 @@ export function DashboardSidebarNav({ items }: { items: DashboardNavItem[] }) {
           <Link
             key={i.href}
             href={i.href}
-            prefetch
+            onClick={() => {
+              window.sessionStorage.setItem("ym_debug_dashboard_nav_start", String(Date.now()))
+              reportDashboardDebug("A", "src/components/dashboard/dashboard-nav.tsx:sidebar:click", "[DEBUG] sidebar nav click", {
+                href: i.href,
+                fromPath: pathname
+              })
+            }}
             className={cn(
               "group flex h-12 items-center gap-3 rounded-2xl border px-3 text-sm font-medium transition-colors duration-200",
               active
@@ -345,11 +371,14 @@ export function DashboardSidebarNav({ items }: { items: DashboardNavItem[] }) {
 
 export function DashboardBottomNav({ items }: { items: DashboardNavItem[] }) {
   const pathname = usePathname()
-  const router = useRouter()
 
   useEffect(() => {
-    for (const i of items) router.prefetch(i.href)
-  }, [items, router])
+    const navStart = Number(window.sessionStorage.getItem("ym_debug_dashboard_nav_start") || "0")
+    reportDashboardDebug("A", "src/components/dashboard/dashboard-nav.tsx:bottom:path", "[DEBUG] bottom pathname changed", {
+      pathname,
+      elapsedMs: navStart ? Date.now() - navStart : null
+    })
+  }, [pathname])
 
   return (
     <nav className="grid grid-cols-5 overflow-hidden rounded-3xl border border-border bg-surface-glass shadow-float backdrop-blur-xl">
@@ -359,7 +388,13 @@ export function DashboardBottomNav({ items }: { items: DashboardNavItem[] }) {
           <Link
             key={i.href}
             href={i.href}
-            prefetch
+            onClick={() => {
+              window.sessionStorage.setItem("ym_debug_dashboard_nav_start", String(Date.now()))
+              reportDashboardDebug("A", "src/components/dashboard/dashboard-nav.tsx:bottom:click", "[DEBUG] bottom nav click", {
+                href: i.href,
+                fromPath: pathname
+              })
+            }}
             className={cn(
               "grid h-16 place-items-center border-r border-border px-1 text-muted transition-colors duration-200 last:border-r-0",
               active ? "text-foreground" : "hover:text-foreground"
